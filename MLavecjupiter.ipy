@@ -1,0 +1,490 @@
+# %% Code issus des différentes vidéo YT
+
+#%% Import bibli
+import yfinance as yf
+import pandas as pd
+
+from tkinter import *
+from tkcalendar import DateEntry
+import datetime as dt
+
+import pandas_datareader as web
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from mpl_finance import candlestick_ohlc
+from sklearn.linear_model import LinearRegression
+from statsmodels.tsa.arima.model import ARIMA
+from scipy.stats import norm
+from adtk.data import validate_series
+from adtk.visualization import plot
+from adtk.detector import *
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import Dense, LSTM, Dropout
+import datetime as dt
+import shutil
+#import talib as ta
+import os
+
+#%% Mon model
+company = 'META'
+start = dt.datetime(2012,1,1)
+end = dt.datetime(2020,1,1)
+data = yf.download(company,start,end)
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(data['Close'].values.reshape(-1,1))
+prediction_days = 60
+x_train = []
+y_train = []
+for x in range(prediction_days,len(scaled_data)):
+    x_train.append(scaled_data[x-prediction_days:x,0])
+    y_train.append(scaled_data[x,0])
+
+x_train ,y_train = np.array(x_train),np.array(y_train)
+x_train = np.reshape(x_train,(x_train.shape[0],x_train.shape[1],1))
+
+model = Sequential()
+model.add(LSTM(units=50,return_sequences=True,input_shape=(x_train.shape[1],1)))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50,return_sequences=True))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50))
+model.add(Dropout(0.2))
+model.add(Dense(units=1))
+model.compile(optimizer='adam',loss='mean_squared_error')
+model.fit(x_train,y_train,epochs=25,batch_size=32)
+#%% Deuxième partie
+test_start = dt.datetime(2020,1,1)
+test_end = dt.datetime.now()
+test_data = yf.download(company,start,end)
+actual_prices = test_data['Close'].values
+total_dataset = pd.concat((data['Close'],test_data['Close']),axis=0)
+model_inputs = total_dataset[len(total_dataset)-len(test_data)-prediction_days:].values
+model_inputs = model_inputs.reshape(-1,1)
+model_inputs = scaler.transform(model_inputs)
+x_test = []
+for x in range(prediction_days,len(model_inputs)):
+    x_test.append(model_inputs[x-prediction_days:x,0])
+
+x_test = np.array(x_test)
+x_test = np.reshape(x_test,(x_test.shape[0],x_test.shape[1],1))
+
+predicted_prices = model.predict(x_test)
+predicted_prices = scaler.inverse_transform(predicted_prices)
+
+plt.plot(actual_prices,color='black',label=f"Actual {company} Price")
+plt.plot(predicted_prices,color='green',label=f"Predicted {company} Price")
+plt.title(f"{company} Share price")
+plt.xlabel('Time')
+plt.ylabel(f"{company} Share Price")
+plt.show()
+#%% Fin vidéo 
+real_data = [model_inputs[len(model_inputs)+1-prediction_days:len(model_inputs+1)]]
+real_data = np.array(real_data)
+real_data = np.reshape(real_data,(real_data.shape[0],real_data.shape[1],1))
+
+prediction = model.predict(real_data)
+prediction = scaler.inverse_transform(prediction)
+print(f"Prediction : {prediction}")
+# %%VIDEO 3 ANOMALY DETECTION IN STOCK PRICE
+data = yf.download('TSLA')['Close']
+data = validate_series(data)
+esd_dectector = PersistAD(c=20,side="negative")
+esd_dectector.windows = 10
+anomalies = esd_dectector.fit_detect(data)
+plot(data, anomaly=anomalies, ts_linewidth=1,ts_markersize=3,anomaly_color='red',anomaly_tag="marker")
+plt.show()
+
+
+# %%  VIDEO 4 FACE DETECTION
+
+data_dir = "datasetimage"
+
+for directory in os.listdir(data_dir):
+    first_file = os.listdir(os.path.join(data_dir,directory))[1]
+    shutil.copyfile(os.path.join(data_dir,directory,first_file),os.path.join("Samples",f"{directory}.jpg"))
+smallest_distance = None
+for file in os.listdir("Samples"):
+    if file.endswith(".jpg"):
+        result = DeepFace.verify("Person1.jpg",f"Samples/{file}", model_name='Facenet', distance_metric='euclidean')
+        print(result)
+        if result["verified"]:
+            print("This person looks exactly like : ",file.split(".")[0])
+            break
+        if smallest_distance is None:
+            smallest_distance = (file.split(".")[0], result['distance'])
+        else:
+            smallest_distance = (file.split(".")[0], result["distance"]) if result["distance"] < smallest_distance[1] else smallest_distance
+else:
+    print(f"No match found, close match is : {smallest_distance}")
+# %% VIDEO 5
+"""
+company = 'AAPL'
+start = dt.datetime(2012,1,1)
+end = dt.datetime(2020,1,1)
+data = yf.download(company,start,end)
+data['SMA_100'] = ta.SMA(data['Close'],20)
+data['TMA_100'] = ta.EMA(data['Close'],100)
+plt.plot(data['TMA_100'])
+plt.plot(data['Close'])
+plt.show()
+plt.plot(data['Close'])
+plt.plot(data['SMA_100'])
+plt.show()
+
+data['RSI'] = ta.RSI(data['Close'])
+fig, axs = plt.subplots(2, 1, gridspec_kw={"height_ratios": [3, 1]}, figsize=(10, 6))
+axs[0].plot(data['Close'])
+axs[1].axhline(y=70,color="r",linestyle="--")
+axs[1].axhline(y=30,color="g",linestyle="--")
+axs[1].plot(data['RSI'],color="orange")
+
+start = dt.datetime(2021,1,1)
+end = dt.datetime.now()
+company = 'GS'
+data = data = yf.download(company,start,end)
+macd , macd_signal, macd_hist = ta.MACD(data['Close'])
+fig, axs = plt.subplots(2, 1, gridspec_kw={"height_ratios": [3, 1]}, figsize=(10, 6))
+c = ["red" if cl<0 else "green" for cl in macd_hist]
+axs[0].plot(data['Close'])
+axs[1].plot(macd,'b-')
+axs[1].plot(macd_signal,'--', color='orange')
+axs[1].bar(macd_hist.index,macd_hist,color=c)
+"""
+#%% Video 6 
+# %% Code issus des différentes vidéo YT
+
+company = 'META'
+start = dt.datetime(2012,1,1)
+end = dt.datetime(2020,1,1)
+data = yf.download(company,start,end)
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(data['Close'].values.reshape(-1,1))
+prediction_days = 60
+x_train = []
+y_train = []
+for x in range(prediction_days,len(scaled_data)):
+    x_train.append(scaled_data[x-prediction_days:x,0])
+    y_train.append(scaled_data[x,0])
+
+x_train ,y_train = np.array(x_train),np.array(y_train)
+x_train = np.reshape(x_train,(x_train.shape[0],x_train.shape[1],1))
+
+model = Sequential()
+model.add(LSTM(units=50,return_sequences=True,input_shape=(x_train.shape[1],1)))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50,return_sequences=True))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50))
+model.add(Dropout(0.2))
+model.add(Dense(units=1))
+model.compile(optimizer='adam',loss='mean_squared_error')
+model.fit(x_train,y_train,epochs=25,batch_size=32)
+#%% Deuxième partie
+test_start = dt.datetime(2020,1,1)
+test_end = dt.datetime.now()
+test_data = yf.download(company,start,end)
+actual_prices = test_data['Close'].values
+total_dataset = pd.concat((data['Close'],test_data['Close']),axis=0)
+model_inputs = total_dataset[len(total_dataset)-len(test_data)-prediction_days:].values
+model_inputs = model_inputs.reshape(-1,1)
+model_inputs = scaler.transform(model_inputs)
+x_test = []
+for x in range(prediction_days,len(model_inputs)):
+    x_test.append(model_inputs[x-prediction_days:x,0])
+
+x_test = np.array(x_test)
+x_test = np.array(x_test,(x_test.shape[0],x_test.shape[1],1))
+
+predicted_prices = model.predict(x_test)
+predicted_prices = scaler.inverse_transform(predicted_prices)
+
+plt.plot(actual_prices,color='black',label=f"Actual {company} Price")
+plt.plot(predicted_prices,color='green',label=f"Predicted {company} Price")
+plt.title(f"{company} Share price")
+plt.xlabel('Time')
+plt.ylabel(f"{company} Share Price")
+plt.show()
+
+#%%Algo MAison
+
+def simple_moving_average(ticker, window):
+    data = yf.download(ticker, start="2021-01-01", end="2022-02-27")
+    sma = data["Close"].rolling(window=window).mean()
+    data["SMA"] = sma
+    plt.plot(data.index, data["Close"], label="Close")
+    plt.plot(data.index, data["SMA"], label="SMA")
+    plt.legend()
+    plt.show()
+    
+
+def linear_regressionn(ticker):
+    data = yf.download(ticker, start="2021-01-01", end="2022-02-27")
+    x = np.array(range(len(data))).reshape(-1, 1)
+    y = data["Close"].values.reshape(-1, 1)
+    model = LinearRegression().fit(x, y)
+    y_pred = model.predict(x)
+    plt.plot(data.index, data["Close"], label="Close")
+    plt.plot(data.index, y_pred, label="Linear Regression")
+    plt.legend()
+    plt.show()
+    
+def linear_regression(ticker, start_date, end_date):
+    data = yf.download(ticker, start=start_date, end=end_date)
+    X = data[["Open", "High", "Low", "Volume"]]
+    y = data["Close"]
+    model = LinearRegression().fit(X, y)
+    predictions = model.predict(X)
+    plt.plot(data.index, y, label="Actual")
+    plt.plot(data.index, predictions, label="Predicted")
+    plt.legend()
+    plt.show()
+
+def relative_strength_index(ticker, window):
+    data = yf.download(ticker, start="2021-01-01", end="2022-02-27")
+    delta = data["Close"].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=window).mean()
+    avg_loss = loss.rolling(window=window).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    data["RSI"] = rsi
+    plt.plot(data.index, data["RSI"])
+    plt.axhline(y=30, color='r', linestyle='-')
+    plt.axhline(y=70, color='r', linestyle='-')
+    plt.show()
+
+def time_series_model(ticker, p, d, q):
+    data = yf.download(ticker, start="2021-01-01", end="2022-02-27")
+    model = ARIMA(data["Close"], order=(p, d, q))
+    results = model.fit()
+    predictions = results.predict(start="2022-01-01", end="2022-02-27")
+    plt.plot(data.index, data["Close"], label="Actual")
+    plt.plot(predictions.index, predictions, label="Predicted")
+    plt.legend()
+    plt.show()
+
+def neural_network_model(ticker):
+    data = yf.download(ticker, start="2020-01-01", end="2022-02-27")
+    ts = data["Close"]
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_data = scaler.fit_transform(ts.values.reshape(-1,1))
+    x_train, y_train = [], []
+    for i in range(60,len(scaled_data)):
+        x_train.append(scaled_data[i-60:i,0])
+        y_train.append(scaled_data[i,0])
+    x_train, y_train = np.array(x_train), np.array(y_train)
+    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+    model = Sequential()
+    model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1],1)))
+    model.add(LSTM(units=50))
+    model.add(Dense(1))
+    model.compile(loss='mean_squared_error', optimizer='adam')
+    model.fit(x_train, y_train, epochs=1, batch_size=1, verbose=2)
+    y_pred = model.predict(x_train)
+
+    # Get the actual Y_test values
+    y_test = data["Close"].iloc[-1]
+
+    # Print the results
+    print("Predicted value:", scaler.inverse_transform(y_pred)[0][0])
+    print("Actual value:", y_test)
+
+    return model
+
+def regression_model(ticker):
+    data = yf.download(ticker, start="2020-01-01", end="2022-02-27")
+    X = data["Open"].values.reshape(-1, 1)
+    y = data["Close"].values
+    model = LinearRegression().fit(X, y)
+    # Préparation des données de test
+    X_test = np.array([100, 105, 110]).reshape(-1, 1)
+
+    # Prédiction avec le modèle
+    y_pred = model.predict(X_test)
+
+    # Affichage des prédictions
+    print(y_pred)
+    return model
+
+def volatility_model(ticker):
+    data = yf.download(ticker, start="2021-01-01", end="2022-02-27")
+    returns = np.log(data['Close']/data['Close'].shift(1))
+    volatility = np.sqrt(252) * returns.std()
+    return volatility
+
+
+def option_model(ticker, strike, expiry):
+    data = yf.download(ticker, start="2021-01-01", end="2022-02-27")
+    data.fillna(method='ffill', inplace=True)
+    S = data['Close'][-1]
+    r = 0.01
+    expiry = pd.Timestamp(expiry)
+    T = (expiry - pd.Timestamp('today')).days / 365
+    sigma = data['Close'].pct_change().rolling(20).std().dropna().mean() + 0.001
+    d1 = (np.log(S/strike) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    call_price = S * norm.cdf(d1) - strike * np.exp(-r * T) * norm.cdf(d2)
+    return call_price
+
+
+def time_series_modell(ticker):
+    data = yf.download(ticker, start="2021-01-01", end="2022-02-27")
+    ts = data["Close"]
+    model = ARIMA(ts, order=(1,1,1)).fit()
+    return model
+
+#%%Import info boite
+tickers = pd.read_csv("C://Users//henri//Downloads//nasdaq_screener_1677254480924.csv")
+infoboite = pd.DataFrame({
+    'Symbol': tickers["Symbol"],
+    'Name': tickers["Name"],
+    'Country': tickers["Country"],
+    'Sector': tickers["Sector"],
+    'Industry': tickers["Industry"],    
+})
+#%%Download des infos sur chaqu'une des boite
+print(infoboite)
+
+data = yf.download("AAPL", start="2021-01-01", end="2023-02-24")
+cac40 = yf.Ticker("^FCHI")
+nasdaq = yf.Ticker("^IXIC")
+apple = yf.Ticker("AAPL")
+apple_data = apple.history(period="max")
+cac40_data = cac40.history(period="max")
+nasdaq_data = nasdaq.history(period="max")
+# Estimateurs de fonction pour Apple
+open_estimator = apple_data['Open'].mean()
+high_estimator = apple_data['High'].mean()
+low_estimator = apple_data['Low'].mean()
+close_estimator = apple_data['Close'].mean()
+#adj_close_estimator = apple_data['Adj Close'].mean()
+volume_estimator = apple_data['Volume'].mean()
+
+# Tracé des graphiques pour comparer les données d'Apple avec le CAC40 et le Nasdaq 
+plt.plot(apple_data['Close'], label='Apple') 
+plt.plot(cac40_data['Close'], label='CAC40') 
+plt.plot(nasdaq_data['Close'], label='Nasdaq') 
+plt.legend() 
+#plt.show() 
+
+print("Time Series model :")
+print(time_series_modell("AAPL").summary())
+print(time_series_modell("AAPL").params)
+print(time_series_modell("AAPL").predict())
+call_price = option_model("AAPL", 150, pd.to_datetime("2022-01-20"))
+print("Call price:", str(call_price))
+print("volatility model :"+str(volatility_model("AAPL")))
+#print("regression model :")
+#print(regression_model("AAPL"))
+#print("neural_network model :"+str(neural_network_model("AAPL")))
+
+
+#simple_moving_average("AAPL", 20)
+#linear_regressionn("AAPL")
+#relative_strength_index("AAPL", 14)
+linear_regression("AAPL", "2021-01-01", "2023-04-27")
+#time_series_model("AAPL", 1, 1, 1)
+
+
+
+ # Pour connecter Matplotlib avec PowerBI, vous devez d'abord exporter les données sous forme de fichier CSV, puis importer ce fichier CSV dans PowerBI et créer un graphique à partir des données importées.
+ 
+a = pd.DataFrame(data)
+print(a)
+#a = pd.read_excel("Test.xlsx")
+#data = a
+Date = pd.DataFrame( a.axes)
+df_transpose = Date.transpose()
+Date = Date.T[0]
+
+#%% Plot à partir de la donnée
+
+ax = plt.subplot()
+ax.grid(True)
+ax.set_axisbelow(True)
+ax.set_title('{} Share Price'.format("AAPL"), color='white')
+
+ax.set_facecolor('black')
+ax.figure.set_facecolor('#121212')
+ax.tick_params(axis='x', colors='white')
+ax.tick_params(axis='y', colors='white')
+ax.xaxis_date()
+
+    # Plot The Candlestick Chart
+#candlestick_ohlc(ax, data.values, width=0.5, colorup='#00ff00')
+#plt.show()
+#%% Analyse Data base
+price = data["Close"]
+volume = data["Volume"]
+
+print(data.columns.names)
+    
+#print(price)
+#print(volume)
+#print(data) 
+
+#%% Stock Visualisation Github 
+
+def visualize():
+    
+    # Get Dates From DateEntry and Convert It To Datetime
+    from_date = cal_from.get_date()
+    to_date = cal_to.get_date()
+
+    start = dt.datetime(from_date.year, from_date.month, from_date.day)
+    end = dt.datetime(to_date.year, to_date.month, to_date.day)
+
+    # Load Ticker From Entry And Download Data
+    ticker = text_ticker.get()
+    data = web.DataReader("AAPL", 'yahoo', start, end)
+
+    # Restructure Data Into OHLC Format
+    data = data[['Open', 'High', 'Low', 'Close']]
+
+    # Reset Index And Convert Dates Into Numerical Format
+    data.reset_index(inplace=True)
+    data['Date'] = data['Date'].map(mdates.date2num)
+
+    # Adjust Style Of The Plot
+    ax = plt.subplot()
+    ax.grid(True)
+    ax.set_axisbelow(True)
+    ax.set_title('{} Share Price'.format(ticker), color='white')
+    ax.figure.canvas.set_window_title('NeuralNine Stock Visualizer v0.1 Alpha')
+    ax.set_facecolor('black')
+    ax.figure.set_facecolor('#121212')
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
+    ax.xaxis_date()
+
+    # Plot The Candlestick Chart
+    candlestick_ohlc(ax, data.values, width=0.5, colorup='#00ff00')
+    plt.show()
+
+# Define Main Window
+root = Tk()
+root.title("NeuralNine Stock Visualizer v0.1 Alpha")
+
+# Add Components And Link Function
+label_from = Label(root, text="From:")
+label_from.pack()
+cal_from = DateEntry(root, width=50, year=2010, month=1, day=1)
+cal_from.pack(padx=10, pady=10)
+
+label_to = Label(root, text="To:")
+label_to.pack()
+cal_to = DateEntry(root, width=50)
+cal_to.pack(padx=10, pady=10)
+
+label_ticker = Label(root, text="Ticker Symbol:")
+label_ticker.pack()
+text_ticker = Entry(root)
+text_ticker.pack()
+
+btn_visualize = Button(root, text="Visualize", command=visualize)
+btn_visualize.pack()
+
+root.mainloop()
